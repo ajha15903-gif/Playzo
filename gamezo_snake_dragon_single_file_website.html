@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <title>Gamezo | Snake Dragon</title>
+  <meta name="description" content="Snake Dragon — a fast, mobile-friendly canvas game on Gamezo." />
+  <style>
+    :root{
+      --bg:#0b1220;--panel:#111a2e;--accent:#26d07c;--accent-2:#5ee7ff;--danger:#ff4d6d;--text:#eaf2ff
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Inter,Helvetica,Arial,sans-serif;background:radial-gradient(1200px 600px at 70% -10%,#17315b33 0%,#0b1220 55%),var(--bg);color:var(--text);display:flex;flex-direction:column}
+    header{display:flex;align-items:center;gap:.75rem;padding:14px 18px;background:linear-gradient(180deg,#0f1a31,transparent)}
+    .logo{width:36px;height:36px;border-radius:12px;background:conic-gradient(from 210deg at 50% 50%,#26d07c, #5ee7ff, #26d07c);display:grid;place-items:center;box-shadow:0 8px 24px #26d07c33, inset 0 0 10px #26d07c55}
+    .logo span{font-weight:800;color:#00160e}
+    h1{font-size:1.1rem;margin:0;letter-spacing:.4px}
+    .sub{opacity:.8;font-size:.8rem}
+
+    main{display:grid;grid-template-columns:1fr;gap:14px;place-items:center;padding:10px 14px 20px}
+    .stage{width:min(92vw,720px);background:linear-gradient(180deg,#0d182f,#0b1220);border-radius:20px;box-shadow:0 12px 40px #0008, inset 0 0 0 1px #ffffff10;padding:14px}
+    .hud{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+    .pill{background:var(--panel);border-radius:999px;padding:8px 12px;display:flex;align-items:center;gap:10px;box-shadow:inset 0 0 0 1px #ffffff0f}
+    .pill b{font-variant-numeric:tabular-nums}
+    .btn{appearance:none;border:0;border-radius:14px;padding:10px 14px;background:linear-gradient(180deg,#1b2a4e,#0f1b33);color:var(--text);cursor:pointer;box-shadow:0 8px 24px #0006, inset 0 0 0 1px #ffffff1a;transition:transform .04s ease}
+    .btn:active{transform:translateY(1px)}
+    canvas{width:100%;height:auto;display:block;background:linear-gradient(180deg,#07101f,#0b1527)}
+
+    /* Touch controls */
+    .controls{user-select:none;-webkit-user-select:none;touch-action:manipulation;display:grid;grid-template-columns:repeat(3,70px);grid-template-rows:repeat(3,70px);gap:8px;justify-content:center;margin:14px auto 4px}
+    .pad{display:grid;place-items:center;border-radius:14px;background:linear-gradient(180deg,#1a2746,#0e1a33);box-shadow:inset 0 0 0 1px #ffffff18;color:var(--text);font-size:20px}
+    .pad.empty{background:transparent;box-shadow:none}
+    .pad:active{transform:translateY(1px)}
+
+    footer{opacity:.8;text-align:center;font-size:.85rem;padding:12px 16px}
+    a{color:var(--accent)}
+    .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#0b182e;box-shadow:0 10px 30px #0008, inset 0 0 0 1px #ffffff22;border-radius:12px;padding:10px 14px;opacity:0;pointer-events:none;transition:opacity .25s ease}
+    .toast.show{opacity:1}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo" aria-hidden="true"><span>GZ</span></div>
+    <div>
+      <h1>Gamezo — Snake Dragon</h1>
+      <div class="sub">Keyboard: ⬅️⬆️➡️⬇️ | Mobile: pad below • Pause: P • Restart: R</div>
+    </div>
+  </header>
+
+  <main>
+    <section class="stage" aria-label="Game stage">
+      <div class="hud">
+        <div class="pill">Score: <b id="score">0</b></div>
+        <div class="pill">High: <b id="hiscore">0</b></div>
+        <button class="btn" id="pauseBtn" aria-pressed="false">⏸ Pause</button>
+        <button class="btn" id="resetBtn">🔄 Reset</button>
+      </div>
+      <canvas id="game" width="720" height="540" aria-label="Snake Dragon game canvas"></canvas>
+    </section>
+
+    <section class="controls" aria-label="Touch controls" id="touchControls">
+      <div class="pad empty"></div>
+      <button class="pad" data-dir="up">⬆️</button>
+      <div class="pad empty"></div>
+      <button class="pad" data-dir="left">⬅️</button>
+      <div class="pad empty"></div>
+      <button class="pad" data-dir="right">➡️</button>
+      <div class="pad empty"></div>
+      <button class="pad" data-dir="down">⬇️</button>
+      <div class="pad empty"></div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <footer>
+    © <span id="year"></span> Gamezo • Built with ♥ for the web
+  </footer>
+
+  <script>
+  (()=>{
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+
+    const CELL = 18;           // grid cell size
+    const COLS = Math.floor(canvas.width / CELL);
+    const ROWS = Math.floor(canvas.height / CELL);
+
+    const scoreEl = document.getElementById('score');
+    const hiEl = document.getElementById('hiscore');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const toast = document.getElementById('toast');
+
+    document.getElementById('year').textContent = new Date().getFullYear();
+
+    let hi = +localStorage.getItem('gamezo_snakedragon_hi') || 0;
+    hiEl.textContent = hi;
+
+    // Game state
+    let snake, dir, apple, speed, tick, playing, growth, score;
+
+    function init(){
+      snake = [
+        {x:Math.floor(COLS/2), y:Math.floor(ROWS/2)}
+      ];
+      dir = {x:1, y:0};
+      apple = spawnApple();
+      speed = 7;           // tiles per second
+      tick = 0;
+      playing = true;
+      growth = 3;          // start length boost
+      score = 0;
+      scoreEl.textContent = score;
+      pauseBtn.textContent = '⏸ Pause';
+      pauseBtn.setAttribute('aria-pressed','false');
+    }
+
+    function spawnApple(){
+      let p;
+      do{
+        p = {x: (Math.random()*COLS)|0, y: (Math.random()*ROWS)|0};
+      }while(snake.some(s=>s.x===p.x && s.y===p.y));
+      return p;
+    }
+
+    function showToast(msg){
+      toast.textContent = msg; toast.classList.add('show');
+      clearTimeout(showToast.tid);
+      showToast.tid = setTimeout(()=>toast.classList.remove('show'), 1200);
+    }
+
+    function setDir(nx, ny){
+      // disallow reversing into itself
+      if(snake.length>1 && snake[0].x+nx===snake[1].x && snake[0].y+ny===snake[1].y) return;
+      dir = {x:nx, y:ny};
+    }
+
+    // Input
+    window.addEventListener('keydown', e=>{
+      const k = e.key.toLowerCase();
+      if(k==='arrowup' || k==='w') setDir(0,-1);
+      else if(k==='arrowdown' || k==='s') setDir(0,1);
+      else if(k==='arrowleft' || k==='a') setDir(-1,0);
+      else if(k==='arrowright' || k==='d') setDir(1,0);
+      else if(k==='p') togglePause();
+      else if(k==='r') { init(); showToast('Restarted'); }
+    });
+
+    document.getElementById('touchControls').addEventListener('click', e=>{
+      const dirBtn = e.target.closest('[data-dir]');
+      if(!dirBtn) return;
+      const d = dirBtn.getAttribute('data-dir');
+      if(d==='up') setDir(0,-1);
+      if(d==='down') setDir(0,1);
+      if(d==='left') setDir(-1,0);
+      if(d==='right') setDir(1,0);
+    });
+
+    pauseBtn.addEventListener('click', togglePause);
+    resetBtn.addEventListener('click', ()=>{ init(); showToast('Reset'); });
+
+    function togglePause(){
+      playing = !playing;
+      pauseBtn.textContent = playing ? '⏸ Pause' : '▶️ Resume';
+      pauseBtn.setAttribute('aria-pressed', String(!playing));
+      showToast(playing ? 'Resumed' : 'Paused');
+    }
+
+    // Game loop
+    let last = performance.now();
+    function loop(now){
+      const dt = (now - last) / 1000; // seconds
+      last = now;
+      if(playing){
+        tick += dt;
+        const step = 1/Math.max(4, Math.min(18, speed + Math.floor(score/5)));
+        while(tick > step){
+          tick -= step; update();
+        }
+      }
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    function update(){
+      // Move head
+      const head = {x: snake[0].x + dir.x, y: snake[0].y + dir.y};
+
+      // Wrap around edges (dragon portals 🌀)
+      head.x = (head.x + COLS) % COLS;
+      head.y = (head.y + ROWS) % ROWS;
+
+      // Self hit?
+      if(snake.some((s,i)=> i>0 && s.x===head.x && s.y===head.y)){
+        showToast('💥 Game Over');
+        hi = Math.max(hi, score); localStorage.setItem('gamezo_snakedragon_hi', hi);
+        hiEl.textContent = hi;
+        playing = false; return;
+      }
+
+      snake.unshift(head);
+
+      // Eat apple
+      if(head.x===apple.x && head.y===apple.y){
+        score++; scoreEl.textContent = score; growth += 2; apple = spawnApple();
+      }
+
+      // Trim tail unless growing
+      if(growth>0) growth--; else snake.pop();
+    }
+
+    function draw(){
+      // bg grid stars
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      drawBackdrop();
+
+      // Apple (glowing orb)
+      drawApple(apple.x, apple.y);
+
+      // Snake (dragon)
+      for(let i=snake.length-1;i>=0;i--){
+        const p = snake[i];
+        const nxt = snake[i-1] || p;
+        const dirx = Math.sign((nxt.x - p.x) || 0);
+        const diry = Math.sign((nxt.y - p.y) || 0);
+        drawDragonSegment(p.x, p.y, i, dirx, diry, i===0);
+      }
+
+      // HUD overlay when paused / over
+      if(!playing){
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.fillRect(0,0,canvas.width,canvas.height);
+        ctx.fillStyle = '#eaf2ff';
+        ctx.font = '700 36px system-ui';
+        ctx.textAlign = 'center';
+        ctx.fillText('Paused / Game Over', canvas.width/2, canvas.height/2 - 8);
+        ctx.font = '500 18px system-ui';
+        ctx.fillText('Press R to restart • P to resume', canvas.width/2, canvas.height/2 + 20);
+      }
+    }
+
+    function drawBackdrop(){
+      // starry grid
+      for(let y=0;y<ROWS;y++){
+        for(let x=0;x<COLS;x++){
+          if(((x+y)&7)===0){
+            const cx = x*CELL + CELL/2, cy = y*CELL + CELL/2;
+            ctx.fillStyle = 'rgba(94,231,255,0.08)';
+            ctx.fillRect(cx-1, cy-1, 2, 2);
+          }
+        }
+      }
+      // soft vignette
+      const g = ctx.createRadialGradient(canvas.width/2,canvas.height/2,100, canvas.width/2,canvas.height/2, Math.max(canvas.width,canvas.height));
+      g.addColorStop(0,'rgba(38,208,124,0.04)');
+      g.addColorStop(1,'rgba(0,0,0,0.25)');
+      ctx.fillStyle = g; ctx.fillRect(0,0,canvas.width,canvas.height);
+    }
+
+    function drawApple(x,y){
+      const px = x*CELL, py = y*CELL;
+      const cx = px + CELL/2, cy = py + CELL/2;
+      const r = CELL*0.38;
+      const grd = ctx.createRadialGradient(cx,cy, r*0.2, cx,cy, r);
+      grd.addColorStop(0,'#fff');
+      grd.addColorStop(1,'#5ee7ff');
+      ctx.fillStyle = grd;
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1; ctx.stroke();
+    }
+
+    function drawDragonSegment(x,y,i,dirx,diry,isHead){
+      const px = x*CELL, py = y*CELL;
+      const cx = px + CELL/2, cy = py + CELL/2;
+      const hue = 145; // greenish dragon
+      const base = `hsl(${hue}, 70%, ${35 + Math.min(i,10)*3}%)`;
+      const edge = 'rgba(255,255,255,0.15)';
+
+      // Body orb
+      ctx.fillStyle = base;
+      ctx.beginPath(); ctx.roundRect(px+2, py+2, CELL-4, CELL-4, 6); ctx.fill();
+      ctx.strokeStyle = edge; ctx.stroke();
+
+      // Spikes
+      ctx.save();
+      ctx.translate(cx, cy);
+      if(dirx!==0 || diry!==0){
+        const angle = Math.atan2(diry, dirx);
+        ctx.rotate(angle);
+      }
+      ctx.fillStyle = 'rgba(38,208,124,0.9)';
+      for(let s=0;s<3;s++){
+        ctx.beginPath();
+        ctx.moveTo(-CELL*0.2 + s*CELL*0.18, 0);
+        ctx.lineTo(-CELL*0.05 + s*CELL*0.18, -CELL*0.35);
+        ctx.lineTo(CELL*0.1 + s*CELL*0.18, 0);
+        ctx.closePath(); ctx.fill();
+      }
+
+      // Eyes when head
+      if(isHead){
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(CELL*0.1, -CELL*0.15, 2.2, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(CELL*0.1, CELL*0.15, 2.2, 0, Math.PI*2); ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // Start
+    init();
+    requestAnimationFrame(loop);
+  })();
+  </script>
+</body>
+</html>
